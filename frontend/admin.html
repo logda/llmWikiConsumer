@@ -1,0 +1,344 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>LLM Wiki Agent - 管理</title>
+  <style>
+    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+    :root {
+      --primary: #4f46e5; --primary-light: #6366f1;
+      --bg: #f5f5f5; --surface: #fff; --text: #1f2937; --text2: #6b7280;
+      --border: #e5e7eb; --success: #16a34a; --error: #ef4444; --radius: 8px;
+    }
+    html { font-size: 15px; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: var(--bg); color: var(--text); min-height: 100vh;
+    }
+    .container { max-width: 800px; margin: 0 auto; padding: 20px; }
+
+    /* Header */
+    .header {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 16px 0; border-bottom: 1px solid var(--border); margin-bottom: 24px;
+    }
+    .header h1 { font-size: 20px; color: var(--primary); }
+    .header a { color: var(--text2); text-decoration: none; font-size: 14px; }
+    .header a:hover { color: var(--text); }
+
+    /* Cards */
+    .card {
+      background: var(--surface); border-radius: var(--radius);
+      border: 1px solid var(--border); padding: 20px; margin-bottom: 20px;
+    }
+    .card h2 { font-size: 16px; margin-bottom: 16px; color: var(--text); }
+
+    /* Form */
+    .form-row { display: flex; gap: 10px; align-items: flex-end; margin-bottom: 12px; flex-wrap: wrap; }
+    .form-group { display: flex; flex-direction: column; gap: 4px; flex: 1; min-width: 150px; }
+    .form-group label { font-size: 13px; color: var(--text2); font-weight: 500; }
+    .form-group input, .form-group select {
+      padding: 8px 12px; border: 1px solid var(--border); border-radius: 6px;
+      font-size: 14px; outline: none; font-family: inherit;
+    }
+    .form-group input:focus, .form-group select:focus { border-color: var(--primary); }
+    .form-group input[type="file"] { padding: 6px; }
+
+    /* Buttons */
+    .btn {
+      padding: 8px 16px; border: none; border-radius: 6px;
+      font-size: 14px; cursor: pointer; font-weight: 500;
+      transition: background 0.15s; white-space: nowrap;
+    }
+    .btn-primary { background: var(--primary); color: #fff; }
+    .btn-primary:hover { background: var(--primary-light); }
+    .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+    .btn-success { background: var(--success); color: #fff; }
+    .btn-success:hover { background: #15803d; }
+    .btn-success:disabled { opacity: 0.5; cursor: not-allowed; }
+    .btn-sm { padding: 4px 10px; font-size: 13px; }
+
+    /* Table */
+    .table-wrap { overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; font-size: 14px; }
+    th, td { padding: 8px 12px; text-align: left; border-bottom: 1px solid var(--border); }
+    th { background: #f9fafb; color: var(--text2); font-weight: 600; font-size: 13px; }
+    tr:hover td { background: #f9fafb; }
+
+    /* Status badge */
+    .badge {
+      display: inline-block; padding: 2px 8px; border-radius: 10px;
+      font-size: 12px; font-weight: 500;
+    }
+    .badge-active { background: #dcfce7; color: #15803d; }
+    .badge-inactive { background: #f3f4f6; color: #6b7280; }
+
+    /* Toast */
+    .toast {
+      position: fixed; top: 20px; right: 20px; padding: 12px 20px;
+      border-radius: var(--radius); color: #fff; font-size: 14px;
+      z-index: 1000; animation: slideIn 0.3s ease;
+    }
+    .toast-success { background: var(--success); }
+    .toast-error { background: var(--error); }
+    @keyframes slideIn { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+
+    /* Empty state */
+    .empty { text-align: center; padding: 30px; color: var(--text2); font-size: 14px; }
+
+    @media (max-width: 640px) {
+      .container { padding: 12px; }
+      .form-row { flex-direction: column; }
+      .form-group { min-width: auto; }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>知识库管理</h1>
+      <a href="index.html">← 返回对话</a>
+    </div>
+
+    <!-- Create Namespace -->
+    <div class="card">
+      <h2>创建知识库</h2>
+      <div class="form-row">
+        <div class="form-group">
+          <label>标识 (小写字母/数字/下划线)</label>
+          <input type="text" id="nsName" placeholder="my_wiki" pattern="[a-z0-9_]+">
+        </div>
+        <div class="form-group">
+          <label>显示名称</label>
+          <input type="text" id="nsDisplayName" placeholder="我的知识库">
+        </div>
+        <button class="btn btn-primary" id="createNsBtn">创建</button>
+      </div>
+    </div>
+
+    <!-- Upload Version -->
+    <div class="card">
+      <h2>上传版本包</h2>
+      <div class="form-row">
+        <div class="form-group">
+          <label>选择知识库</label>
+          <select id="uploadNsSelect"><option value="">-- 请选择 --</option></select>
+        </div>
+        <div class="form-group">
+          <label>版本包 (.wiki.tar.gz)</label>
+          <input type="file" id="versionFile" accept=".wiki.tar.gz">
+        </div>
+        <button class="btn btn-primary" id="uploadBtn">上传</button>
+      </div>
+    </div>
+
+    <!-- Namespaces & Versions -->
+    <div class="card">
+      <h2>知识库与版本</h2>
+      <div id="nsListContainer">
+        <div class="empty">加载中...</div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const API = "/api/v1/admin";
+
+    // ---------- Init ----------
+    document.addEventListener("DOMContentLoaded", () => {
+      document.getElementById("createNsBtn").addEventListener("click", createNamespace);
+      document.getElementById("uploadBtn").addEventListener("click", uploadVersion);
+      loadAll();
+    });
+
+    // ---------- Namespace CRUD ----------
+
+    async function loadAll() {
+      await loadNamespaces();
+      await loadNamespaceList();
+    }
+
+    async function loadNamespaces() {
+      try {
+        const res = await fetch(`${API}/namespaces`);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const namespaces = await res.json();
+
+        // Populate selects
+        const uploadSelect = document.getElementById("uploadNsSelect");
+        const currentUploadVal = uploadSelect.value;
+        uploadSelect.length = 1;
+        for (const ns of namespaces) {
+          const opt = document.createElement("option");
+          opt.value = ns.id;
+          opt.textContent = ns.display_name || ns.name;
+          uploadSelect.appendChild(opt);
+        }
+        uploadSelect.value = currentUploadVal;
+      } catch (e) {
+        console.error("Failed to load namespaces:", e);
+      }
+    }
+
+    async function loadNamespaceList() {
+      const container = document.getElementById("nsListContainer");
+      try {
+        const res = await fetch(`${API}/namespaces`);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const namespaces = await res.json();
+
+        if (namespaces.length === 0) {
+          container.innerHTML = '<div class="empty">暂无知识库，请先创建一个。</div>';
+          return;
+        }
+
+        let html = "";
+        for (const ns of namespaces) {
+          html += `
+            <div style="margin-bottom:16px;">
+              <h3 style="font-size:15px;margin-bottom:8px;">${esc(ns.display_name)} <code style="color:var(--text2);font-size:12px;">${esc(ns.name)}</code></h3>
+              <div class="table-wrap">
+                <table id="versions-${ns.id}">
+                  <thead><tr><th>版本</th><th>状态</th><th>页数</th><th>创建时间</th><th>操作</th></tr></thead>
+                  <tbody><tr><td colspan="5" style="text-align:center;color:var(--text2);">加载中...</td></tr></tbody>
+                </table>
+              </div>
+            </div>`;
+        }
+        container.innerHTML = html;
+
+        // Load versions for each namespace
+        for (const ns of namespaces) {
+          loadVersions(ns.id);
+        }
+      } catch (e) {
+        container.innerHTML = `<div class="empty">加载失败: ${esc(e.message)}</div>`;
+      }
+    }
+
+    async function loadVersions(namespaceId) {
+      const tbody = document.querySelector(`#versions-${namespaceId} tbody`);
+      try {
+        const res = await fetch(`${API}/namespaces/${namespaceId}/versions`);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const versions = await res.json();
+
+        if (versions.length === 0) {
+          tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--text2);">暂无版本</td></tr>';
+          return;
+        }
+
+        tbody.innerHTML = versions.map(v => `
+          <tr>
+            <td><code>${esc(v.version)}</code></td>
+            <td><span class="badge ${v.status === 'active' ? 'badge-active' : 'badge-inactive'}">${esc(v.status)}</span></td>
+            <td>${v.page_count}</td>
+            <td>${new Date(v.created_at).toLocaleString('zh-CN')}</td>
+            <td>
+              ${v.status !== 'active'
+                ? `<button class="btn btn-success btn-sm" onclick="activateVersion('${v.id}')">激活</button>`
+                : '<span style="color:var(--success);font-size:13px;">✓ 当前</span>'
+              }
+            </td>
+          </tr>
+        `).join("");
+      } catch (e) {
+        tbody.innerHTML = `<tr><td colspan="5" style="color:var(--error);">加载失败: ${esc(e.message)}</td></tr>`;
+      }
+    }
+
+    async function createNamespace() {
+      const name = document.getElementById("nsName").value.trim();
+      const displayName = document.getElementById("nsDisplayName").value.trim();
+      if (!name || !displayName) { toast("请填写所有字段", "error"); return; }
+
+      const btn = document.getElementById("createNsBtn");
+      btn.disabled = true;
+      try {
+        const res = await fetch(`${API}/namespaces`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name, display_name: displayName }),
+        });
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          throw new Error(err.detail || `HTTP ${res.status}`);
+        }
+        toast("知识库创建成功");
+        document.getElementById("nsName").value = "";
+        document.getElementById("nsDisplayName").value = "";
+        await loadAll();
+      } catch (e) {
+        toast(e.message, "error");
+      } finally {
+        btn.disabled = false;
+      }
+    }
+
+    async function uploadVersion() {
+      const nsId = document.getElementById("uploadNsSelect").value;
+      const fileInput = document.getElementById("versionFile");
+      const file = fileInput.files[0];
+
+      if (!nsId) { toast("请选择知识库", "error"); return; }
+      if (!file) { toast("请选择版本包文件", "error"); return; }
+      if (!file.name.endsWith(".wiki.tar.gz")) { toast("文件格式错误，需为 .wiki.tar.gz", "error"); return; }
+
+      const btn = document.getElementById("uploadBtn");
+      btn.disabled = true;
+      try {
+        const formData = new FormData();
+        formData.append("file", file);
+
+        const res = await fetch(`${API}/namespaces/${nsId}/versions`, {
+          method: "POST",
+          body: formData,
+        });
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          throw new Error(err.detail || `HTTP ${res.status}`);
+        }
+        const data = await res.json();
+        toast(`版本 ${data.version} 上传成功`);
+        fileInput.value = "";
+        await loadAll();
+      } catch (e) {
+        toast(e.message, "error");
+      } finally {
+        btn.disabled = false;
+      }
+    }
+
+    async function activateVersion(versionId) {
+      try {
+        const res = await fetch(`${API}/versions/${versionId}/activate`, { method: "PUT" });
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          throw new Error(err.detail || `HTTP ${res.status}`);
+        }
+        toast("版本已激活");
+        await loadAll();
+      } catch (e) {
+        toast(e.message, "error");
+      }
+    }
+
+    // ---------- Utilities ----------
+
+    function toast(msg, type = "success") {
+      const el = document.createElement("div");
+      el.className = `toast toast-${type}`;
+      el.textContent = msg;
+      document.body.appendChild(el);
+      setTimeout(() => el.remove(), 3000);
+    }
+
+    function esc(str) {
+      const d = document.createElement("div");
+      d.textContent = str;
+      return d.innerHTML;
+    }
+  </script>
+</body>
+</html>

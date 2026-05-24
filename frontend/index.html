@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>LLM Wiki Agent</title>
+  <link rel="stylesheet" href="style.css">
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+</head>
+<body>
+  <div class="app">
+    <!-- Top Bar -->
+    <header class="top-bar">
+      <div class="top-bar-left">
+        <h1 class="app-title">LLM Wiki Agent</h1>
+        <span class="namespace-badge" id="namespaceBadge">未选择知识库</span>
+        <span class="version-badge" id="versionBadge"></span>
+      </div>
+      <div class="top-bar-right">
+        <select id="namespaceSelect" class="namespace-select">
+          <option value="">-- 选择知识库 --</option>
+        </select>
+        <a href="admin.html" class="admin-link">管理</a>
+      </div>
+    </header>
+
+    <!-- Chat Area -->
+    <main class="chat-area" id="chatArea">
+      <div class="welcome" id="welcomeMessage">
+        <div class="welcome-icon">📚</div>
+        <h2>欢迎使用 LLM Wiki Agent</h2>
+        <p>选择一个知识库，然后开始提问。我会通过 WikiFs 工具探索知识库来回答你的问题。</p>
+      </div>
+    </main>
+
+    <!-- Input Area -->
+    <footer class="input-area">
+      <div class="input-wrapper">
+        <textarea
+          id="userInput"
+          placeholder="输入你的问题…"
+          rows="1"
+          disabled
+        ></textarea>
+        <button id="sendBtn" class="send-btn" disabled>
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M22 2L11 13M22 2L15 22L11 13M22 2L2 9L11 13"/>
+          </svg>
+        </button>
+      </div>
+    </footer>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
