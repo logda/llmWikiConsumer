@@ -111,9 +111,9 @@ class VersionActivateResponse(BaseModel):
 class ChatRequest(BaseModel):
     """Chat query request."""
 
+    namespace_id: str = Field(..., description="Wiki namespace ID")
     question: str = Field(..., min_length=1, description="User question")
-    namespace: str = Field(default="default", description="Wiki namespace")
-    version: str = Field(default="latest", description="Wiki version")
+    history: list[dict] = Field(default_factory=list, description="Multi-turn conversation history")
 
 
 class ChatSource(BaseModel):
@@ -128,3 +128,13 @@ class ChatResponse(BaseModel):
 
     answer: str
     sources: list[ChatSource]
+
+
+class ActiveVersionInfo(BaseModel):
+    """Active version information for a namespace."""
+
+    namespace_id: str
+    namespace_name: str
+    version_id: str
+    version: str
+    page_count: int
