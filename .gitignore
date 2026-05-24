@@ -46,3 +46,9 @@ htmlcov/
 
 # mypy
 .mypy_cache/
+
+# Storage
+storage/
+
+# Test data
+test_data/

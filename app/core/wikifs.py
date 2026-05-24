@@ -423,7 +423,10 @@ class WikiFs:
 
             # Recurse into directories
             if entry.endswith("/"):
-                child_path = (base_path + "/" + entry.rstrip("/")) if base_path else entry.rstrip("/")
+                child_path = (
+                    (base_path + "/" + entry.rstrip("/"))
+                    if base_path else entry.rstrip("/")
+                )
                 extension = "    " if is_last else "│   "
                 self._build_tree(child_path, prefix + extension, depth - 1, lines)
 

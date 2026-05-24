@@ -1,6 +1,5 @@
 """Comprehensive unit tests for WikiFs virtual filesystem."""
 
-from typing import Any
 
 import pytest
 
@@ -13,7 +12,6 @@ from app.core.wikifs import (
     _normalize_path,
 )
 from tests.conftest import MockCache, MockVectorStore
-
 
 # ============================================================
 # Helper function tests

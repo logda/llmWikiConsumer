@@ -1,12 +1,10 @@
 """Pytest configuration and shared fixtures for WikiFs tests."""
 
 from typing import Any
-from unittest.mock import AsyncMock
 
 import pytest
 
 from app.core.wikifs import WikiFs
-
 
 # ---------- Sample Path Tree Data ----------
 
@@ -45,7 +43,10 @@ SAMPLE_CHUNKS: dict[str, list[dict[str, Any]]] = {
             "page_path": "wiki/concepts/oauth.md",
         },
         {
-            "text": "The OAuth flow involves these steps:\n1. Authorization Request\n2. Token Exchange",
+            "text": (
+                "The OAuth flow involves these steps:"
+                "\n1. Authorization Request\n2. Token Exchange"
+            ),
             "chunk_index": 1,
             "page_path": "wiki/concepts/oauth.md",
         },

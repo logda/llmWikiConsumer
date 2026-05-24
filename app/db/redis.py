@@ -1,5 +1,7 @@
 """Redis connection management."""
 
+import gzip
+import json
 import logging
 from typing import Any
 
@@ -19,10 +21,13 @@ async def get_redis() -> aioredis.Redis:
         settings = get_settings()
         _redis = aioredis.from_url(
             settings.redis_url,
-            decode_responses=True,
+            decode_responses=False,  # Use bytes for gzip compatibility
             encoding="utf-8",
         )
-        logger.info("Redis connection established to %s:%s", settings.redis_host, settings.redis_port)
+        logger.info(
+            "Redis connection established to %s:%s",
+            settings.redis_host, settings.redis_port,
+        )
     return _redis
 
 
@@ -49,7 +54,10 @@ class RedisCache:
     async def get(self, namespace: str, version: str, path: str) -> str | None:
         """Get cached page content."""
         key = self._page_key(namespace, version, path)
-        return await self._redis.get(key)
+        raw = await self._redis.get(key)
+        if raw is None:
+            return None
+        return raw.decode("utf-8") if isinstance(raw, bytes) else raw
 
     async def set(self, namespace: str, version: str, path: str, content: str) -> None:
         """Set cached page content with TTL."""
@@ -63,14 +71,10 @@ class RedisCache:
 
     async def get_path_tree(self, namespace: str, version: str) -> dict[str, Any] | None:
         """Get path tree from Redis (gzip compressed JSON)."""
-        import gzip
-        import json
-
         key = f"path_tree:{namespace}:{version}"
         raw = await self._redis.get(key)
         if raw is None:
             return None
-        # Redis returns string with decode_responses=True; need to handle gzip
         if isinstance(raw, str):
             raw = raw.encode("utf-8")
         try:
@@ -79,3 +83,14 @@ class RedisCache:
         except Exception:
             # If not gzip, try plain JSON
             return json.loads(raw)
+
+    async def set_path_tree(self, namespace: str, version: str, tree: dict[str, Any]) -> None:
+        """Store path tree as gzip compressed JSON in Redis."""
+        key = f"path_tree:{namespace}:{version}"
+        json_bytes = json.dumps(tree, ensure_ascii=False).encode("utf-8")
+        compressed = gzip.compress(json_bytes)
+        await self._redis.set(key, compressed)
+        logger.info(
+            "Path tree stored for %s:%s (raw=%d, compressed=%d)",
+            namespace, version, len(json_bytes), len(compressed),
+        )

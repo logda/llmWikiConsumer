@@ -292,6 +292,18 @@ def create_wiki_structure(output_dir: Path) -> Path:
     meta_path = wiki_root / "meta.json"
     meta_path.write_text(json.dumps(meta, indent=2, ensure_ascii=False), encoding="utf-8")
 
+    # Create manifest.json (standard wiki package manifest)
+    manifest = {
+        "namespace": "test",
+        "version": "1.0.0",
+        "description": "Test wiki package for integration testing",
+        "page_count": len(PAGES),
+        "files": list(PAGES.keys()),
+        "created_at": "2024-01-01T00:00:00Z",
+    }
+    manifest_path = wiki_root / "manifest.json"
+    manifest_path.write_text(json.dumps(manifest, indent=2, ensure_ascii=False), encoding="utf-8")
+
     return wiki_root
 
 

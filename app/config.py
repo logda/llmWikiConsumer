@@ -46,6 +46,13 @@ class Settings(BaseSettings):
     # WikiFs
     wikifs_cache_ttl: int = 3600  # 页面缓存 TTL（秒）
 
+    # Storage
+    storage_path: str = "./storage"  # 文件存储目录
+
+    # Chunk
+    chunk_size: int = 500  # chunk 切分大小（字符数）
+    chunk_overlap: int = 50  # chunk 重叠行数
+
     @property
     def postgres_dsn(self) -> str:
         """PostgreSQL connection string."""

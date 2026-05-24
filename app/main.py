@@ -11,10 +11,20 @@ from app.config import get_settings
 @asynccontextmanager
 async def lifespan(app: FastAPI):  # noqa: ARG001
     """Application lifespan: startup and shutdown."""
-    settings = get_settings()
-    # Startup: initialize connections (to be implemented)
+    # Startup: initialize connections
+    from app.db.postgres import init_db
+    await init_db()
+
     yield
-    # Shutdown: close connections (to be implemented)
+
+    # Shutdown: close connections
+    from app.db.postgres import close_postgres
+    from app.db.redis import close_redis
+    from app.db.vector import close_qdrant
+
+    await close_qdrant()
+    await close_redis()
+    await close_postgres()
 
 
 def create_app() -> FastAPI:

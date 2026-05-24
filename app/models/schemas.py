@@ -1,7 +1,8 @@
 """Pydantic models and schemas."""
 
-from pydantic import BaseModel, Field
+from datetime import datetime
 
+from pydantic import BaseModel, Field
 
 # ---------- WikiFs Schemas ----------
 
@@ -59,6 +60,51 @@ class WikiHeadResponse(BaseModel):
     content: str
 
 
+# ---------- Admin Schemas ----------
+
+
+class NamespaceCreate(BaseModel):
+    """Request to create a namespace."""
+
+    name: str = Field(..., min_length=1, max_length=100, pattern=r"^[a-z0-9_]+$",
+                       description="命名空间标识（小写字母、数字、下划线）")
+    display_name: str = Field(..., min_length=1, max_length=200, description="显示名称")
+
+
+class NamespaceInfo(BaseModel):
+    """Namespace information."""
+
+    id: str
+    name: str
+    display_name: str
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class VersionInfo(BaseModel):
+    """Version information."""
+
+    id: str
+    namespace_id: str
+    version: str
+    status: str
+    page_count: int
+    file_path: str
+    created_at: datetime
+    activated_at: datetime | None = None
+
+    model_config = {"from_attributes": True}
+
+
+class VersionActivateResponse(BaseModel):
+    """Response for version activation."""
+
+    version_id: str
+    status: str
+    previous_active_id: str | None = None
+
+
 # ---------- Chat Schemas ----------
 
 
@@ -82,22 +128,3 @@ class ChatResponse(BaseModel):
 
     answer: str
     sources: list[ChatSource]
-
-
-# ---------- Admin Schemas ----------
-
-
-class VersionUploadRequest(BaseModel):
-    """Version upload request."""
-
-    namespace: str = Field(default="default", description="Wiki namespace")
-    version: str = Field(..., min_length=1, description="Version identifier")
-
-
-class VersionInfo(BaseModel):
-    """Version information."""
-
-    namespace: str
-    version: str
-    status: str
-    created_at: str

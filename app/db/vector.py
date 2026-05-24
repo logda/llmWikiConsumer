@@ -1,16 +1,20 @@
 """Qdrant vector database connection management."""
 
 import logging
+import uuid
 from typing import Any
 
 from qdrant_client import AsyncQdrantClient
-from qdrant_client.models import Filter, FieldCondition, MatchValue
+from qdrant_client.models import FieldCondition, Filter, MatchValue, PointStruct, VectorParams
 
 from app.config import get_settings
 
 logger = logging.getLogger(__name__)
 
 _qdrant: AsyncQdrantClient | None = None
+
+# Default vector size for sparse/no-embedding mode (we use metadata-only for now)
+DEFAULT_VECTOR_SIZE = 4
 
 
 async def get_qdrant() -> AsyncQdrantClient:
@@ -23,7 +27,10 @@ async def get_qdrant() -> AsyncQdrantClient:
             port=settings.qdrant_port,
             api_key=settings.qdrant_api_key or None,
         )
-        logger.info("Qdrant connection established to %s:%s", settings.qdrant_host, settings.qdrant_port)
+        logger.info(
+            "Qdrant connection established to %s:%s",
+            settings.qdrant_host, settings.qdrant_port,
+        )
     return _qdrant
 
 
@@ -43,6 +50,109 @@ class VectorStore:
         self._client = client
         self._collection = collection
 
+    async def ensure_collection(self) -> None:
+        """Ensure the Qdrant collection exists, create if not."""
+        collections = await self._client.get_collections()
+        collection_names = [c.name for c in collections.collections]
+
+        if self._collection not in collection_names:
+            await self._client.create_collection(
+                collection_name=self._collection,
+                vectors_config=VectorParams(
+                    size=DEFAULT_VECTOR_SIZE,
+                    distance="Cosine",
+                ),
+            )
+            logger.info("Created Qdrant collection: %s", self._collection)
+        else:
+            logger.debug("Qdrant collection already exists: %s", self._collection)
+
+    async def upsert_chunks(
+        self,
+        namespace: str,
+        version: str,
+        chunks: list[dict[str, Any]],
+    ) -> int:
+        """Batch upsert chunks into Qdrant.
+
+        Args:
+            namespace: Wiki namespace.
+            version: Wiki version string.
+            chunks: List of chunk dicts with keys: text, chunk_index, page_path.
+
+        Returns:
+            Number of chunks upserted.
+        """
+        await self.ensure_collection()
+
+        points = []
+        for chunk in chunks:
+            point_id = str(uuid.uuid4())
+            # Use a dummy vector since we focus on metadata search for now
+            vector = [0.0, 0.0, 0.0, 0.0]
+            payload = {
+                "text": chunk["text"],
+                "chunk_index": chunk["chunk_index"],
+                "page_path": chunk["page_path"],
+                "namespace": namespace,
+                "version": version,
+                "start_line": chunk.get("start_line", 0),
+                "end_line": chunk.get("end_line", 0),
+            }
+            points.append(
+                PointStruct(id=point_id, vector=vector, payload=payload)
+            )
+
+        # Batch upsert (max 100 per request)
+        batch_size = 100
+        for i in range(0, len(points), batch_size):
+            batch = points[i : i + batch_size]
+            await self._client.upsert(
+                collection_name=self._collection,
+                points=batch,
+            )
+
+        logger.info("Upserted %d chunks for %s:%s", len(points), namespace, version)
+        return len(points)
+
+    async def delete_chunks_by_namespace_version(
+        self, namespace: str, version: str
+    ) -> int:
+        """Delete all chunks for a specific namespace and version.
+
+        Returns the number of points deleted.
+        """
+        from qdrant_client.models import PointIdsList
+
+        # First, find all matching points
+        filter_condition = Filter(
+            must=[
+                FieldCondition(key="namespace", match=MatchValue(value=namespace)),
+                FieldCondition(key="version", match=MatchValue(value=version)),
+            ]
+        )
+
+        results, _ = await self._client.scroll(
+            collection_name=self._collection,
+            scroll_filter=filter_condition,
+            limit=10000,
+            with_payload=False,
+            with_vectors=False,
+        )
+
+        if not results:
+            return 0
+
+        point_ids = [point.id for point in results]
+        await self._client.delete(
+            collection_name=self._collection,
+            points_selector=PointIdsList(points=point_ids),
+        )
+        logger.info(
+            "Deleted %d chunks for %s:%s", len(point_ids), namespace, version
+        )
+        return len(point_ids)
+
     async def get_chunks_by_path(
         self,
         namespace: str,
@@ -50,8 +160,6 @@ class VectorStore:
         path: str,
     ) -> list[dict[str, Any]]:
         """Retrieve all chunks for a specific page, sorted by chunk_index."""
-        from qdrant_client.models import FieldCondition, Filter, MatchValue
-
         filter_condition = Filter(
             must=[
                 FieldCondition(key="namespace", match=MatchValue(value=namespace)),
