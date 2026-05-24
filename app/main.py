@@ -1,8 +1,10 @@
 """FastAPI application entry point."""
 
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI
+from fastapi.staticfiles import StaticFiles
 
 from app.api.v1.router import api_router
 from app.config import get_settings
@@ -38,6 +40,11 @@ def create_app() -> FastAPI:
     )
 
     application.include_router(api_router, prefix="/api/v1")
+
+    # Mount frontend static files (must be AFTER API routes)
+    frontend_dir = Path(__file__).resolve().parent.parent / "frontend"
+    if frontend_dir.is_dir():
+        application.mount("/", StaticFiles(directory=str(frontend_dir), html=True), name="frontend")
 
     return application
 
