@@ -136,19 +136,51 @@ def create_test_tarball(output_dir: Path, name: str = "test-wiki") -> Path:
     """Create a test .wiki.tar.gz archive."""
     import tarfile
 
+    wiki_root = _create_wiki_structure(output_dir, name)
+
+    # Create tarball
+    tarball_path = output_dir / f"{name}.wiki.tar.gz"
+    with tarfile.open(tarball_path, "w:gz") as tar:
+        tar.add(wiki_root, arcname=name)
+
+    return tarball_path
+
+
+def create_test_zip(output_dir: Path, name: str = "test-wiki") -> Path:
+    """Create a test .zip archive."""
+    import zipfile
+
+    wiki_root = _create_wiki_structure(output_dir, name)
+
+    # Create zip
+    zip_path = output_dir / f"{name}.zip"
+    with zipfile.ZipFile(zip_path, "w", compression=zipfile.ZIP_DEFLATED) as zf:
+        for file_path in sorted(wiki_root.rglob("*")):
+            if file_path.is_file():
+                arcname = f"{name}/{file_path.relative_to(wiki_root)}"
+                zf.write(file_path, arcname)
+
+    return zip_path
+
+
+def _create_wiki_structure(output_dir: Path, name: str = "test-wiki") -> Path:
+    """Create the wiki directory structure used by both tarball and zip helpers."""
     wiki_root = output_dir / name
+    if wiki_root.exists():
+        import shutil
+        shutil.rmtree(wiki_root)
     wiki_root.mkdir(parents=True, exist_ok=True)
 
     # Create wiki directory structure
     wiki_dir = wiki_root / "wiki"
-    wiki_dir.mkdir()
+    wiki_dir.mkdir(exist_ok=True)
 
     # Create index
     (wiki_dir / "index.md").write_text("# Wiki Index\n\nWelcome to the test wiki.\n")
 
     # Create subdirectories and pages
     concepts_dir = wiki_dir / "concepts"
-    concepts_dir.mkdir()
+    concepts_dir.mkdir(exist_ok=True)
     (concepts_dir / "oauth.md").write_text(
         "# OAuth 2.0\n\nOAuth is an authorization framework.\n\n"
         "## Grant Types\n\nAuthorization Code and Client Credentials.\n"
@@ -158,7 +190,7 @@ def create_test_tarball(output_dir: Path, name: str = "test-wiki") -> Path:
     )
 
     entities_dir = wiki_dir / "entities"
-    entities_dir.mkdir()
+    entities_dir.mkdir(exist_ok=True)
     (entities_dir / "auth-service.md").write_text(
         "# Auth Service\n\nHandles token validation.\n"
     )
@@ -180,12 +212,7 @@ def create_test_tarball(output_dir: Path, name: str = "test-wiki") -> Path:
         json.dumps(manifest, indent=2, ensure_ascii=False), encoding="utf-8"
     )
 
-    # Create tarball
-    tarball_path = output_dir / f"{name}.wiki.tar.gz"
-    with tarfile.open(tarball_path, "w:gz") as tar:
-        tar.add(wiki_root, arcname=name)
-
-    return tarball_path
+    return wiki_root
 
 
 # ---------- Tests: split_into_chunks ----------
@@ -330,6 +357,120 @@ class TestVersionUpload:
 
         with pytest.raises(ValueError, match="Failed to extract"):
             await version_service.process_upload(ns.id, b"not a tarball", "test.wiki.tar.gz")
+
+    @pytest.mark.asyncio
+    async def test_upload_unsupported_format(
+        self, version_service: VersionService, db_session: AsyncSession, tmp_uploads: Path
+    ) -> None:
+        """Upload unsupported file format should raise ValueError."""
+        ns = await version_service.create_namespace("test_wiki", "Test Wiki")
+        await db_session.flush()
+
+        with pytest.raises(ValueError, match="Unsupported archive format"):
+            await version_service.process_upload(ns.id, b"data", "test-wiki.rar")
+
+
+class TestVersionUploadZip:
+    """Tests for .zip format upload and processing."""
+
+    @pytest.mark.asyncio
+    async def test_upload_valid_zip(
+        self, version_service: VersionService, db_session: AsyncSession, tmp_uploads: Path
+    ) -> None:
+        """Upload a valid .zip and create a version."""
+        ns = await version_service.create_namespace("test_wiki", "Test Wiki")
+        await db_session.flush()
+
+        # Create test zip
+        zip_path = create_test_zip(tmp_uploads)
+        content = zip_path.read_bytes()
+
+        # Upload
+        version = await version_service.process_upload(ns.id, content, "test-wiki.zip")
+
+        assert version is not None
+        assert version.version == "1.0.0"  # From manifest
+        assert version.status == "draft"
+        assert version.page_count > 0
+
+    @pytest.mark.asyncio
+    async def test_zip_version_from_filename(
+        self, version_service: VersionService, db_session: AsyncSession, tmp_uploads: Path
+    ) -> None:
+        """Version should be extracted from .zip filename when no manifest version."""
+        ns = await version_service.create_namespace("test_wiki", "Test Wiki")
+        await db_session.flush()
+
+        # Create zip with versioned name
+        zip_path = create_test_zip(tmp_uploads, name="my-wiki-2.5.0")
+        content = zip_path.read_bytes()
+
+        # Manually remove version from manifest by creating a zip without manifest version
+        import io
+        import zipfile
+
+        # Read the zip, modify manifest to remove version, rewrite
+        buf = io.BytesIO(content)
+        with zipfile.ZipFile(buf, "r") as zf_in:
+            buf_out = io.BytesIO()
+            with zipfile.ZipFile(buf_out, "w", compression=zipfile.ZIP_DEFLATED) as zf_out:
+                for item in zf_in.infolist():
+                    data = zf_in.read(item.filename)
+                    if item.filename.endswith("manifest.json"):
+                        manifest = json.loads(data)
+                        manifest.pop("version", None)
+                        data = json.dumps(manifest, ensure_ascii=False).encode("utf-8")
+                    zf_out.writestr(item, data)
+            content = buf_out.getvalue()
+
+        version = await version_service.process_upload(ns.id, content, "my-wiki-2.5.0.zip")
+        assert version.version == "2.5.0"
+
+    @pytest.mark.asyncio
+    async def test_zip_path_tree_stored_in_redis(
+        self, version_service: VersionService, db_session: AsyncSession,
+        mock_redis_cache, tmp_uploads: Path,
+    ) -> None:
+        """Path tree should be stored in Redis after .zip upload."""
+        ns = await version_service.create_namespace("test_wiki", "Test Wiki")
+        await db_session.flush()
+
+        zip_path = create_test_zip(tmp_uploads)
+        content = zip_path.read_bytes()
+        version = await version_service.process_upload(ns.id, content, "test-wiki.zip")
+
+        tree = await mock_redis_cache.get_path_tree(ns.name, version.version)
+        assert tree is not None
+        assert "files" in tree
+        assert len(tree["files"]) > 0
+
+    @pytest.mark.asyncio
+    async def test_zip_chunks_stored_in_vector_store(
+        self, version_service: VersionService, db_session: AsyncSession,
+        mock_vector_store, tmp_uploads: Path,
+    ) -> None:
+        """Chunks should be stored in vector store after .zip upload."""
+        ns = await version_service.create_namespace("test_wiki", "Test Wiki")
+        await db_session.flush()
+
+        zip_path = create_test_zip(tmp_uploads)
+        content = zip_path.read_bytes()
+        await version_service.process_upload(ns.id, content, "test-wiki.zip")
+
+        chunks = await mock_vector_store.get_chunks_by_path("test_wiki", "1.0.0", "wiki/index.md")
+        assert len(chunks) > 0
+        assert any("Wiki Index" in c["text"] for c in chunks)
+
+    @pytest.mark.asyncio
+    async def test_upload_invalid_zip(
+        self, version_service: VersionService, db_session: AsyncSession, tmp_uploads: Path
+    ) -> None:
+        """Upload invalid .zip content should raise ValueError."""
+        ns = await version_service.create_namespace("test_wiki", "Test Wiki")
+        await db_session.flush()
+
+        with pytest.raises(ValueError, match="Failed to extract"):
+            await version_service.process_upload(ns.id, b"not a zip file", "test-wiki.zip")
 
 
 class TestPathTree:

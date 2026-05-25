@@ -79,6 +79,55 @@ class StorageBackend:
         wiki_root = self._find_wiki_root(extract_dir)
         return wiki_root
 
+    async def extract_zip(self, zip_path: Path, version_id: str, namespace_id: str) -> Path:
+        """Extract a .zip to the version directory.
+
+        Includes zip slip protection: verifies that extracted paths
+        do not escape the target directory.
+
+        Args:
+            zip_path: Path to the .zip file.
+            version_id: Version identifier.
+            namespace_id: Namespace identifier.
+
+        Returns:
+            Path to the extracted wiki directory.
+
+        Raises:
+            ValueError: If a zip entry would escape the extract directory (zip slip).
+        """
+        import zipfile
+
+        extract_dir = self.version_dir(namespace_id, version_id)
+        resolved_extract = extract_dir.resolve()
+
+        with zipfile.ZipFile(zip_path, "r") as zf:
+            for member in zf.infolist():
+                # Skip directories – they are created implicitly by extracting files
+                if member.is_dir():
+                    continue
+
+                # Zip slip check: ensure the resolved target path stays within extract_dir
+                target_path = (extract_dir / member.filename).resolve()
+                if not str(target_path).startswith(str(resolved_extract)):
+                    raise ValueError(
+                        f"Zip slip detected: '{member.filename}' would escape "
+                        f"the extract directory"
+                    )
+
+                # Ensure parent directory exists
+                target_path.parent.mkdir(parents=True, exist_ok=True)
+
+                # Extract the file
+                with zf.open(member) as src, target_path.open("wb") as dst:
+                    dst.write(src.read())
+
+        logger.info("Extracted zip %s to %s", zip_path, extract_dir)
+
+        # Find the wiki root (same logic as tarball)
+        wiki_root = self._find_wiki_root(extract_dir)
+        return wiki_root
+
     def _find_wiki_root(self, extract_dir: Path) -> Path:
         """Find the wiki root directory after extraction.
 
