@@ -1,6 +1,7 @@
 """File storage management - local filesystem with MinIO interface预留."""
 
 import logging
+import os
 import shutil
 from pathlib import Path
 
@@ -109,7 +110,8 @@ class StorageBackend:
 
                 # Zip slip check: ensure the resolved target path stays within extract_dir
                 target_path = (extract_dir / member.filename).resolve()
-                if not str(target_path).startswith(str(resolved_extract)):
+                common = os.path.commonpath([resolved_extract, target_path])
+                if common != str(resolved_extract):
                     raise ValueError(
                         f"Zip slip detected: '{member.filename}' would escape "
                         f"the extract directory"
