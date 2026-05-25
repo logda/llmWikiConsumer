@@ -2,7 +2,8 @@
 """Create a test wiki package structure for integration testing.
 
 Generates a directory structure with markdown files that simulates
-a wiki knowledge base, then packages it as a .wiki.tar.gz archive.
+a wiki knowledge base, then packages it as both .wiki.tar.gz and
+.zip archives.
 
 Usage:
     python scripts/create_test_wiki.py [--output OUTPUT_DIR]
@@ -28,11 +29,10 @@ The generated structure:
 import argparse
 import gzip
 import json
-import os
 import shutil
 import tarfile
+import zipfile
 from pathlib import Path
-
 
 # Wiki page content templates
 PAGES: dict[str, str] = {
@@ -235,8 +235,8 @@ The system follows a microservices architecture with an OAuth gateway.
 
 ```
 [Client] --> [API Gateway] --> [Auth Service]
-                          \--> [User Service]
-                          \--> [Wiki Service]
+                          \\--> [User Service]
+                          \\--> [Wiki Service]
 ```
 
 ## Data Flow
@@ -356,6 +356,25 @@ def create_tarball(wiki_root: Path, output_dir: Path) -> Path:
     return tarball_path
 
 
+def create_zip(wiki_root: Path, output_dir: Path) -> Path:
+    """Create a .zip archive from the wiki directory.
+
+    Args:
+        wiki_root: Path to the wiki root directory.
+        output_dir: Directory to create the zip in.
+
+    Returns:
+        Path to the created zip file.
+    """
+    zip_path = output_dir / "test-wiki.zip"
+    with zipfile.ZipFile(zip_path, "w", compression=zipfile.ZIP_DEFLATED) as zf:
+        for file_path in sorted(wiki_root.rglob("*")):
+            if file_path.is_file():
+                arcname = f"test-wiki/{file_path.relative_to(wiki_root)}"
+                zf.write(file_path, arcname)
+    return zip_path
+
+
 def create_path_tree_file(wiki_root: Path, output_dir: Path) -> Path:
     """Create a gzip-compressed JSON path tree file.
 
@@ -415,6 +434,10 @@ def main() -> None:
     # Step 4: Create tarball
     tarball_path = create_tarball(wiki_root, output_dir)
     print(f"  Created wiki tarball at {tarball_path}")
+
+    # Step 5: Create zip
+    zip_path = create_zip(wiki_root, output_dir)
+    print(f"  Created wiki zip at {zip_path}")
 
     print("\nDone! Test wiki package created successfully.")
 

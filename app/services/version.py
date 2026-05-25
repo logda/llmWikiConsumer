@@ -202,16 +202,31 @@ class VersionService:
         self._db.add(version)
         await self._db.flush()  # Get the ID
 
-        # Step 3: Extract tar.gz
+        # Step 3: Extract archive (tar.gz or zip)
         try:
-            wiki_root = await self._storage.extract_tarball(
-                file_path, version.id, namespace_id
-            )
+            if filename.endswith(".zip"):
+                wiki_root = await self._storage.extract_zip(
+                    file_path, version.id, namespace_id
+                )
+            elif filename.endswith(".tar.gz") or filename.endswith(".wiki.tar.gz"):
+                wiki_root = await self._storage.extract_tarball(
+                    file_path, version.id, namespace_id
+                )
+            else:
+                raise ValueError(
+                    f"Unsupported archive format: '{filename}'. "
+                    f"Supported formats: .zip, .tar.gz, .wiki.tar.gz"
+                )
+        except ValueError:
+            # Re-raise ValueError (unsupported format / zip slip) without wrapping
+            await self._db.delete(version)
+            await self._db.flush()
+            raise
         except Exception as e:
             # Clean up the version record
             await self._db.delete(version)
             await self._db.flush()
-            raise ValueError(f"Failed to extract tarball: {e}") from e
+            raise ValueError(f"Failed to extract archive: {e}") from e
 
         # Step 4: Read and validate manifest.json
         manifest_path = wiki_root / "manifest.json"
@@ -229,6 +244,16 @@ class VersionService:
         elif filename.endswith(".wiki.tar.gz"):
             # Try to extract version from filename: name-1.2.0.wiki.tar.gz
             parts = filename.replace(".wiki.tar.gz", "").rsplit("-", 1)
+            if len(parts) == 2:
+                version_str = parts[1]
+        elif filename.endswith(".tar.gz"):
+            # Try to extract version from filename: name-1.2.0.tar.gz
+            parts = filename.replace(".tar.gz", "").rsplit("-", 1)
+            if len(parts) == 2:
+                version_str = parts[1]
+        elif filename.endswith(".zip"):
+            # Try to extract version from filename: name-1.2.0.zip
+            parts = filename.replace(".zip", "").rsplit("-", 1)
             if len(parts) == 2:
                 version_str = parts[1]
 
